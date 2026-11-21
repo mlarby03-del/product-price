@@ -1,0 +1,48 @@
+# Aghniati: سيرفر مجاني لتوليد الأغاني (ACE-Step 1.5) في Google Colab
+# قبل التشغيل: Runtime > Change runtime type > T4 GPU
+import subprocess, os, re, time, urllib.request
+
+def sh(cmd):
+    subprocess.run(cmd, shell=True, check=True)
+
+print("1/4 تثبيت الأدوات...")
+sh("curl -LsSf https://astral.sh/uv/install.sh | sh")
+os.environ["PATH"] = "/root/.local/bin:" + os.environ["PATH"]
+os.chdir("/content")
+if not os.path.exists("ACE-Step-1.5"):
+    sh("git clone https://github.com/ACE-Step/ACE-Step-1.5.git")
+os.chdir("/content/ACE-Step-1.5")
+sh("uv sync")
+
+print("2/4 تشغيل السيرفر (أول مرة يحمل النماذج، تستنى شوية)...")
+api = subprocess.Popen("uv run acestep-api", shell=True,
+                       stdout=open("/content/api.log", "w"), stderr=subprocess.STDOUT)
+ready = False
+for _ in range(180):
+    try:
+        urllib.request.urlopen("http://127.0.0.1:8001/health", timeout=5)
+        ready = True
+        break
+    except Exception:
+        time.sleep(5)
+if not ready:
+    print(open("/content/api.log").read()[-3000:])
+    raise SystemExit("السيرفر ما بداش. هذا آخر ما كتب في السجل.")
+
+print("3/4 فتح الرابط العام...")
+sh("wget -q https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64 -O /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared")
+tun = subprocess.Popen(["cloudflared", "tunnel", "--url", "http://127.0.0.1:8001"],
+                       stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+url = None
+for line in tun.stdout:
+    m = re.search(r"https://[a-z0-9-]+\.trycloudflare\.com", line)
+    if m:
+        url = m.group(0)
+        break
+
+print("4/4 واجد!")
+print("انسخ هذا الرابط وحطو في التطبيق:")
+print(url)
+print("خلي هذه الصفحة مفتوحة، ما تسكرهاش.")
+while True:
+    time.sleep(60)
